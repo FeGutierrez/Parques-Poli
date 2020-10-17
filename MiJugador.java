@@ -48,6 +48,7 @@ public class MiJugador extends Jugador {
 	* */
 
 	int[][] piezas = new int[4][4]; //Matriz de las piezas
+	boolean[][] desplazamiento = new boolean[4][4]; //Matriz que indica si una pieza ya fue movida en el turno actual
 	int[][] diferenciaConFinal = new int[4][4];
 	int[] puntajes; // arreglo para dados
 	int paresAcumulados; //pares acumulados
@@ -67,6 +68,11 @@ public class MiJugador extends Jugador {
 		for(int i = 0; i < 4; ++i){
 			for( int j = 0; j< 4; ++j){
 				diferenciaConFinal[i][j] = 75 - (carceles[i]);
+			}
+		}
+		for(int i = 0; i <= 3; ++i){ //Ubicarse en la fila
+			for(int j = 0; j <= 3; ++j){ //Ubicarse en la columna
+				desplazamiento[i][j] = false;
 			}
 		}
 		// (2) -> dados
@@ -135,7 +141,7 @@ public class MiJugador extends Jugador {
 				mover(validas);//
 			} else { //Decidir porque hay piezas en la carcel
 				/*
-				* Los pares especiales de 6s y 1s siempre serán prioritarios para sacar de la cárcel
+				* Los pares especiales de 6s y 1s siempre serán prioritarios para salir de la cárcel
 				* Bajo que circunstancias es mejor mover una pieza a sacar de la cárcel?:
 				* 	- Si hay una pieza en una casilla que no es segura
 				* 		Prioridad: La pieza más adelantada
@@ -267,9 +273,11 @@ public class MiJugador extends Jugador {
 	public ArrayList<Integer> piezasValidos( int[] filaDelJugador, int indiceJugador ){
 		// Cuantas piezas estaban fuera de la cárcel pero sin llegar al final del tablero
 		// en un determinado momento (lo solemos usar antes de sacar de la cárcel )
+		// Y además no han movido en este turno
 		ArrayList<Integer> validos = new ArrayList<>();
 		for( int i = 0; i<filaDelJugador.length; ++i){
-			if( (filaDelJugador[i] != carceles[indiceJugador]) && ( filaDelJugador[i] != 75) ){
+			if( ((filaDelJugador[i] != carceles[indiceJugador]) && ( filaDelJugador[i] != 75))
+					&& desplazamiento[indiceJugador][i] == false){
 				validos.add(i);
 			}
 		}
@@ -315,10 +323,26 @@ public class MiJugador extends Jugador {
 				p = true;
 			}
 		}
-		return true;
+		return p;
 	}
 
-	public ArrayList<Integer> esPosibleAsegurar( int[] filaDelJugador, int indiceJugador ){
+	public boolean perteneceMatriz( int[][] arreglo, int valor){
+		boolean p = false;
+		for(int i = 0; i < arreglo.length; ++i){
+			for(int j = 0; j < arreglo[i].length; ++j){
+				if( arreglo[i][j] == valor){
+					p = true;
+				}
+			}
+
+		}
+		return p;
+	}
+
+
+	//Orden de prioridad: Sacar de la cárcel -> Capturar -> Asegurar
+	//¿Por qué?¿
+	public ArrayList<ArrayList<Integer>> esPosibleAsegurar( int[] filaDelJugador, int indiceJugador ){
 		//Recorremos la fila del jugador y si para algun valor P_i del arreglo el valor de uno de los dados
 		//o su suma, permite que la pieza con el valor P_i termine en una casilla segura se retorna
 		//cuales piezas pueden ser aseguradas (puede ser, 0, 1 o varias)
@@ -329,31 +353,108 @@ public class MiJugador extends Jugador {
 		// P_i + d_2
 		// P_i + d_1 + d_2
 		ArrayList<Integer> validos = piezasValidos(filaDelJugador, indiceJugador);
+		ArrayList<ArrayList<Integer>> puedenAsegurarse = new ArrayList<>();
 		for( int i = 0; i < validos.size(); ++i){ //Para cada pieza valida verificar
-			int v1, v2, v3;
-			v1 = piezas[indiceJugador][validos.get(i)] + puntajes[0];
-			v2 = piezas[indiceJugador][validos.get(i)] + puntajes[1];
-			v3 = piezas[indiceJugador][validos.get(i)] + puntajes[0] + puntajes[1];
-			if( (pertenece(casillasSeguras, v1)) || pertenece(casillasSeguras, v2) || pertenece(casillasSeguras, v3) ){
-				
+			ArrayList<Integer> valoresQueAseguran = new ArrayList<>();
+			int[] valores = valoresAVerificar(piezas[indiceJugador][validos.get(i)]);
+			for(int j=0; j<valores.length; ++j) {
+				if (pertenece(casillasSeguras, valores[j])) {
+					valoresQueAseguran.add(valores[j]);
+				}
 			}
+			puedenAsegurarse.add(valoresQueAseguran);
+		}
+		return puedenAsegurarse;
+	}
+
+	public ArrayList<ArrayList<Integer>> esPosibleCapturar( int[] filaDelJugador, int indiceJugador ){
+		// Retorna una lista de listas en que la primera lista contiene los indices de las piezas del jugador que pueden realizar una captura
+		// y cada una de sus sublistas, indica el valor o valores con los cuales puede capturar una pieza enemiga
+		// para despues basado en ciertos criterios escoja cual capturar
+		ArrayList<Integer> validos = piezasValidos(filaDelJugador, indiceJugador);
+		ArrayList<ArrayList<Integer>> piezasQuePueden = new ArrayList<>(); //Lista para almacenar cada
+		//arreglo de valores validos para capturar
+		for( int i = 0; i < validos.size(); ++i){
+			ArrayList<Integer> valoresDeCapturaDeLaPieza = new ArrayList<>();// Valores de captura para cada pieza
+			if( i != indiceJugador){
+				/*int v1, v2, v3;
+				v1 = piezas[indiceJugador][validos.get(i)] + puntajes[0];
+				v2 = piezas[indiceJugador][validos.get(i)] + puntajes[1];
+				v3 = piezas[indiceJugador][validos.get(i)] + puntajes[0] + puntajes[1];
+				int[] valores = {v1, v2, v3};*/
+				int[] valores = valoresAVerificar(piezas[indiceJugador][validos.get(i)]);
+				for(int j = 0; j < valores.length; ++j ){
+					if(perteneceMatriz(piezas, valores[j])) {
+						valoresDeCapturaDeLaPieza.add(valores[j]);
+					}
+				}
+			}
+			piezasQuePueden.add(valoresDeCapturaDeLaPieza);
+		}
+		return piezasQuePueden;
+	}
+
+	public ArrayList<ArrayList<Integer>> esPosibleFinalizar( int[] filaDelJugador, int indiceJugador){
+		//Cuales piezas del jugador pueden salir y con que valores
+		// Si la i-ésima pieza no puede salir con ningún valor, la sublista es vacía
+		ArrayList<Integer> validos = piezasValidos(filaDelJugador, indiceJugador);
+		ArrayList<ArrayList<Integer>> finalizables = new ArrayList<>();
+		for( int i = 0; i < validos.size(); ++i){
+			ArrayList<Integer> valoresDeSalidaDeLaPieza = new ArrayList<>();// Valores de salida para cada pieza
+			int[] valores = valoresAVerificar(piezas[indiceJugador][validos.get(i)]);
+			for(int j = 0; j < valores.length; ++j ){
+				if( valores[j] == 75 ){
+					valoresDeSalidaDeLaPieza.add(valores[j]); // Si un movimiento resulta en la casilla 75
+					// la pieza es elegible para salir del tablero
+				}
+			}
+			finalizables.add(valoresDeSalidaDeLaPieza);
 		}
 		return null;
 	}
 
-	public ArrayList<Integer> esPosibleCapturar( int[] filaDelJugador, int indiceJugador ){
-		return null;
+	public int[] valoresAVerificar(int posicion){
+		int v1,v2, v3;
+		v1 = posicion + puntajes[0];
+		v2 = posicion + puntajes[1];
+		v3 = posicion + puntajes[0] + puntajes[1];
+		int[] valores = {v1, v2, v3};
+		return valores;
 	}
 
 	public void moverPostCarcel( ArrayList<Integer> validas){ //Implementar movimiento, debe recibir una lista de piezas válidas para mover
 		//Este metodo se usa cuando se acaba de salir de la carcel y solo se podrá mover con uno de los indices
 		++contadorTurnos;
 	}
-	public void mover( ArrayList<Integer> validas ){ //Implementar movimiento, debe recibir una lista de piezas válidas para mover
+	public void mover( ArrayList<Integer> validas){ //Implementar movimiento, debe recibir una lista de piezas válidas para mover
+		int turnoActual = contadorTurnos % 4;
 		if( paresAcumulados == 3){ // Cuando ocurra este evento, se escoge sacar la pieza más atrasada si no se puede asegurar una pieza con el puntaje
+
+			//Hallar el valor no negativo menor a 79 en el arreglo de las casillas faltantes para el final
+			//Basicamente, sacar una pieza que no esté en la cárcel
+			int[] restantes = diferenciaConFinal[turnoActual];
+			int indiceASacar = -1;
+			for(int i=0 ; i< piezas[turnoActual].length; ++i){
+				int max = -1;
+				if( (piezas[turnoActual][i] > 0 && piezas[turnoActual][i] <75) && restantes[i]>max ){
+					max = piezas[turnoActual][i];
+					indiceASacar = i;
+				}
+			}
+			piezas[turnoActual][indiceASacar] = 75; 
+		}
+		while( puntajes[0] != 0 && puntajes[1] != 0){ //Cuando un dado sea utilizado vamos a poner su valor en 0
+			ArrayList<ArrayList<Integer>> puedenCapturar = esPosibleCapturar( piezas[turnoActual], turnoActual) ;
+			ArrayList<ArrayList<Integer>> puedenAsegurarse = esPosibleAsegurar( piezas[turnoActual], turnoActual) ;
+			ArrayList<ArrayList<Integer>> puedenSalir = esPosibleFinalizar( piezas[turnoActual], turnoActual);
+			// Si la lista de piezas que pueden capturar contiene 4 sublistas vacías, quiere decir que no hay piezas
+			//del jugador que puedan hacer una captura, entonces se buscaría cuales pueden asegurarse, si nuevamente
+			// hay 4 sublistas vacias entonces se buscan las piezas que pueden salir, si nuevamente es imposible
+			// se realiza el mejor movimiento que no involucre capturar, asegurar o salir, en ese orden
 
 
 		}
+
 		++contadorTurnos;
 	}
 
